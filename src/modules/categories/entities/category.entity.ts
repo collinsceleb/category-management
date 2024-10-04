@@ -2,6 +2,7 @@ import {
   Column,
   Entity,
   Index,
+  JoinColumn,
   ManyToOne,
   OneToMany,
   PrimaryGeneratedColumn,
@@ -17,11 +18,14 @@ export class Category {
 
   @ManyToOne(() => Category, (category) => category.children, {
     nullable: true,
-    onDelete: 'SET NULL'
+    onDelete: 'SET NULL',
+    
   })
+  @JoinColumn({ name: 'parent_id' })
   @Index('PARENT_ID_IDX')
   parent: Category;
-
+  
   @OneToMany(() => Category, (category) => category.parent)
   children: Category[];
+  
 }

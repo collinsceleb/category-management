@@ -5,9 +5,11 @@ import {
   Body,
   Param,
   Delete,
+  Patch,
 } from '@nestjs/common';
 import { CategoriesService } from './categories.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
+import { MoveCategorySubtreeDto } from './dto/move-category-subtree.dto';
 
 @Controller('categories')
 export class CategoriesController {
@@ -24,18 +26,28 @@ export class CategoriesController {
   ) {
     return this.categoriesService.addChildCategory(body.categories);
   }
-  @Get()
-  findAll() {
-    return this.categoriesService.findAll();
-  }
 
   @Get(':id')
-  findOne(@Param('id') id: string) {
-    return this.categoriesService.findOne(+id);
+  async fetchCategorySubtree(@Param('id') id: number) {
+    return this.categoriesService.fetchCategorySubtree(id);
   }
 
-  @Delete(':id')
-  remove(@Param('id') id: string) {
-    return this.categoriesService.remove(+id);
+  @Patch(':categoryId/move-category-subtree')
+  async moveCategorySubtree(
+    @Param('categoryId') categoryId: number,
+    @Body() moveCategorySubtreeDto: MoveCategorySubtreeDto,
+  ) {
+    return this.categoriesService.moveCategorySubtree(
+      categoryId,
+      moveCategorySubtreeDto,
+    );
+  }
+  @Delete(':categoryId/remove')
+  async removeCategory(
+    @Param('categoryId') categoryId: number,
+  ) {
+    return this.categoriesService.removeCategory(
+      categoryId
+    );
   }
 }
