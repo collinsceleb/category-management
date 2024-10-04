@@ -6,6 +6,7 @@ import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
+  const configService = app.get(ConfigService);
   const config = new DocumentBuilder()
     .setTitle('Category Management')
     .setDescription('API for Category Management')
@@ -16,7 +17,6 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
   SwaggerModule.setup('api', app, document);
   app.useGlobalPipes(new ValidationPipe());
-  const configService = app.get(ConfigService);
   await app.listen(configService.get<number>('PORT'));
 }
 bootstrap();
