@@ -111,7 +111,6 @@ export class CategoriesService {
     }
   }
 
-  
   async removeCategory(categoryId: number): Promise<{ deleted: boolean }> {
     try {
       await this.categoryRepository.delete(categoryId);
@@ -122,7 +121,7 @@ export class CategoriesService {
       );
     }
   }
-  
+
   async moveCategorySubtree(
     categoryId: number,
     moveCategorySubtreeDto: MoveCategorySubtreeDto,
@@ -149,15 +148,12 @@ export class CategoriesService {
         categoryId,
         newParentId,
       );
-console.log(newParentId);
-console.log(categoryId);
-console.log('categcategory.parent.idoryId', category.parent.id);
-console.log(CreateCircular);
       if (CreateCircular) {
         throw new BadRequestException(
           'Cannot move a category under itself or its descendants',
         );
       }
+      await this.CheckhChildrenDescendant(categoryId, newParentId);
       // Update the parent of the category
       category.parent = newParent;
       // Save the updated category
@@ -180,12 +176,11 @@ console.log(CreateCircular);
       where: { id: categoryId },
       relations: ['parent'],
     });
-
+    console.log('currentCategory', currentCategory);
     // Traverse up the tree from the new parent
     while (currentCategory) {
       if (currentCategory.parent) {
-
-        if (currentCategory.parent.id === newParentId) {
+        if (currentCategory.parent.id === categoryId) {
           throw new BadRequestException(
             'Cannot move a category under one of its descendants',
           );
@@ -198,7 +193,25 @@ console.log(CreateCircular);
       // Move up the tree to the parent
       currentCategory = currentCategory.parent;
     }
-
     return false;
+  }
+  private async CheckhChildrenDescendant(
+    categoryId: number,
+    newParentId: number,
+  ): Promise<Category> {
+    const category = await this.categoryRepository.findOne({
+      where: { id: categoryId },
+      relations: ['children'],
+    });
+    if (!category) {
+      throw new NotFoundException('Category not found');
+    }
+    // Recursively check the children of the category
+    for (const child of category.children) {
+      if (await this.CheckhChildrenDescendant(child.id, newParentId)) {
+        throw new BadRequestException('Cannot move to its descendant');
+      }
+    }
+    return category;
   }
 }
