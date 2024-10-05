@@ -1,10 +1,9 @@
-import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { Category } from './entities/category.entity';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { CreateSubCategoryDto } from './dto/create-sub-category.dto';
-import { ConfigService } from '@nestjs/config';
 import { MoveCategorySubtreeDto } from './dto/move-category-subtree.dto';
 
 @Injectable()
@@ -12,7 +11,6 @@ export class CategoriesService {
   constructor(
     @InjectRepository(Category)
     private readonly categoryRepository: Repository<Category>,
-    private readonly configService: ConfigService,
   ) {}
   async createRootCategory(
     createCategoryDto: CreateCategoryDto,
@@ -29,13 +27,11 @@ export class CategoriesService {
     }
   }
 
-  async addChildCategory(
+  async addSubCategory(
     categories: CreateSubCategoryDto[],
   ): Promise<Category[]> {
     try {
       const childCategories: Category[] = [];
-
-      console.log(this.configService.get<number>('PORT'));
 
       for (const category of categories) {
         const parentId = category.parentId;
@@ -67,8 +63,8 @@ export class CategoriesService {
     }
   }
   /**
-   * Implementt PostgreSQL Recursive Common Table Expression (CTE) using TypeORM as Object Relational Mapper(ORM) 
-   * to retrieve a hierarchical representation of categories, 
+   * Implementt PostgreSQL Recursive Common Table Expression (CTE) using TypeORM as Object Relational Mapper(ORM)
+   * to retrieve a hierarchical representation of categories,
    * including their children and potentially further descendants.
    * @param parentId
    * @returns Array of categories with descendants
@@ -121,26 +117,84 @@ export class CategoriesService {
   ): Promise<Category> {
     try {
       const { newParentId } = moveCategorySubtreeDto;
+
+      // Find the category to be moved
       const category = await this.categoryRepository.findOne({
         where: { id: categoryId },
         relations: ['children'],
       });
+
+      if (!category) {
+        throw new NotFoundException('Category not found');
+      }
+
+      // Find the new parent category
       const parent = await this.categoryRepository.findOne({
         where: { id: newParentId },
       });
+
+      if (!parent) {
+        throw new NotFoundException('New parent category not found');
+      }
+
+      // Check if the newParentId is a descendant of categoryId to prevent circular dependency
+      const isDescendant = await this.checkDescendant(categoryId, newParentId);
+      console.log("isDependant", isDescendant);
+      
+
+      if (isDescendant) {
+        throw new BadRequestException(
+          'Cannot move a category under its descendant',
+        );
+      }
+
+      // Ensure you are not moving the category under itself
+      if (categoryId === newParentId) {
+        throw new BadRequestException('Cannot move a category under itself');
+      }
+
+      // Update the parent of the category
       category.parent = parent;
+
+      // Save the updated category
       const savedCategory = await this.categoryRepository.save(category);
+
       return savedCategory;
-    } catch (error) {}
+    } catch (error) {
+      console.error(error)
+      throw new InternalServerErrorException(
+        'An error occurred while moving the category', error
+      );
+    }
   }
-  
-  async removeCategory(categoryId: number): Promise<void> {
+
+  async removeCategory(categoryId: number): Promise<{ deleted: boolean }> {
     try {
       await this.categoryRepository.delete(categoryId);
+      return { deleted: true };
     } catch (error) {
       throw new InternalServerErrorException(
         `Failed to remove category: ${error.message}`,
       );
     }
+  }
+
+  private async checkDescendant(categoryId: number, newParentId: number): Promise<boolean> {
+  const category = await this.categoryRepository.findOne({
+    where: { id: categoryId },
+    relations: ['parent'],
+  });
+
+  if (!category) return false;
+  // Check if the new parent is the category itself or its descendant
+  if (newParentId === categoryId || this.checkDescendant(category.id, newParentId)) {
+    return true;
+  }
+  // Recursively check the parent hierarchy if the category has a parent
+  if (category.parent) {
+    return await this.checkDescendant(categoryId, category.parent.id);
+  }
+
+  return false;
   }
 }

@@ -10,21 +10,38 @@ import {
 import { CategoriesService } from './categories.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { MoveCategorySubtreeDto } from './dto/move-category-subtree.dto';
+import { ApiBody, ApiTags } from '@nestjs/swagger';
+import { CreateSubCategoryDto } from './dto/create-sub-category.dto';
 
 @Controller('categories')
+@ApiTags('categories')
+/**
+ * Controller class for managing categories
+ */
 export class CategoriesController {
   constructor(private readonly categoriesService: CategoriesService) {}
 
   @Post('create-root-category')
+  @ApiBody({ type: CreateCategoryDto })
+  /**
+   * Create a root category
+   * @param createCategoryDto - The category data
+   * @returns The created category
+   */
   async createRootCategory(@Body() createCategoryDto: CreateCategoryDto) {
     return await this.categoriesService.createRootCategory(createCategoryDto);
   }
 
-  @Post('add-child-category')
-  async addChildCategory(
-    @Body() body: { categories: { name: string; parentId: number }[] },
+  @Post('add-sub-category')
+  async addSubCategory(
+    @Body()
+    createSubCategoryDto: {
+      categories: { name: string; parentId: number }[];
+    },
   ) {
-    return this.categoriesService.addChildCategory(body.categories);
+    return this.categoriesService.addSubCategory(
+      createSubCategoryDto.categories,
+    );
   }
 
   @Get(':id')
@@ -43,11 +60,7 @@ export class CategoriesController {
     );
   }
   @Delete(':categoryId/remove')
-  async removeCategory(
-    @Param('categoryId') categoryId: number,
-  ) {
-    return this.categoriesService.removeCategory(
-      categoryId
-    );
+  async removeCategory(@Param('categoryId') categoryId: number) {
+    return this.categoriesService.removeCategory(categoryId);
   }
 }
