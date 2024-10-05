@@ -111,6 +111,18 @@ export class CategoriesService {
     }
   }
 
+  
+  async removeCategory(categoryId: number): Promise<{ deleted: boolean }> {
+    try {
+      await this.categoryRepository.delete(categoryId);
+      return { deleted: true };
+    } catch (error) {
+      throw new InternalServerErrorException(
+        `Failed to remove category: ${error.message}`,
+      );
+    }
+  }
+  
   async moveCategorySubtree(
     categoryId: number,
     moveCategorySubtreeDto: MoveCategorySubtreeDto,
@@ -133,12 +145,15 @@ export class CategoriesService {
         throw new NotFoundException('New parent category not found');
       }
       // Check if the move would create a circular dependency
-      const wouldCreateCircular = await this.checkDescendant(
+      const CreateCircular = await this.checkDescendant(
         categoryId,
         newParentId,
       );
-
-      if (wouldCreateCircular) {
+console.log(newParentId);
+console.log(categoryId);
+console.log('categcategory.parent.idoryId', category.parent.id);
+console.log(CreateCircular);
+      if (CreateCircular) {
         throw new BadRequestException(
           'Cannot move a category under itself or its descendants',
         );
@@ -157,40 +172,33 @@ export class CategoriesService {
       );
     }
   }
-
-  async removeCategory(categoryId: number): Promise<{ deleted: boolean }> {
-    try {
-      await this.categoryRepository.delete(categoryId);
-      return { deleted: true };
-    } catch (error) {
-      throw new InternalServerErrorException(
-        `Failed to remove category: ${error.message}`,
-      );
-    }
-  }
-
   private async checkDescendant(
     categoryId: number,
     newParentId: number,
   ): Promise<boolean> {
-    // Moving to the same category becomes circular
-    if (categoryId === newParentId) {
-      return true;
-    }
     let currentCategory = await this.categoryRepository.findOne({
-      where: { id: newParentId },
+      where: { id: categoryId },
       relations: ['parent'],
     });
 
     // Traverse up the tree from the new parent
     while (currentCategory) {
-      // Finding the original category in the parent chain becomes circular
-      if (currentCategory.id === categoryId) {
-        return true;
+      if (currentCategory.parent) {
+
+        if (currentCategory.parent.id === newParentId) {
+          throw new BadRequestException(
+            'Cannot move a category under one of its descendants',
+          );
+        }
       }
-      // Move to the parent of the current category
+      // Moving to the same category becomes circular
+      if (currentCategory.id === newParentId) {
+        throw new BadRequestException('Cannot move a category under itself');
+      }
+      // Move up the tree to the parent
       currentCategory = currentCategory.parent;
     }
+
     return false;
   }
 }
