@@ -117,11 +117,9 @@ export class CategoriesService {
   ): Promise<Category> {
     try {
       const { newParentId } = moveCategorySubtreeDto;
-
-      // Find the category to be moved
       const category = await this.categoryRepository.findOne({
         where: { id: categoryId },
-        relations: ['children'],
+        relations: ['parent'],
       });
 
       if (!category) {
@@ -129,41 +127,38 @@ export class CategoriesService {
       }
 
       // Find the new parent category
-      const parent = await this.categoryRepository.findOne({
+      const newParent = await this.categoryRepository.findOne({
         where: { id: newParentId },
       });
 
-      if (!parent) {
+      if (!newParent) {
         throw new NotFoundException('New parent category not found');
       }
 
-      // Check if the newParentId is a descendant of categoryId to prevent circular dependency
-      const isDescendant = await this.checkDescendant(categoryId, newParentId);
-      console.log("isDependant", isDescendant);
-      
+      // Check if the move would create a circular dependency
+      const wouldCreateCircular = await this.checkDescendant(
+        categoryId,
+        newParentId,
+      );
 
-      if (isDescendant) {
+      if (wouldCreateCircular) {
         throw new BadRequestException(
-          'Cannot move a category under its descendant',
+          'Cannot move a category under itself or its descendants',
         );
       }
 
-      // Ensure you are not moving the category under itself
-      if (categoryId === newParentId) {
-        throw new BadRequestException('Cannot move a category under itself');
-      }
-
       // Update the parent of the category
-      category.parent = parent;
+      category.parent = newParent;
 
       // Save the updated category
       const savedCategory = await this.categoryRepository.save(category);
 
       return savedCategory;
     } catch (error) {
-      console.error(error)
+      console.error(error);
       throw new InternalServerErrorException(
-        'An error occurred while moving the category', error
+        'An error occurred while moving the category',
+        error,
       );
     }
   }
@@ -179,22 +174,64 @@ export class CategoriesService {
     }
   }
 
-  private async checkDescendant(categoryId: number, newParentId: number): Promise<boolean> {
-  const category = await this.categoryRepository.findOne({
-    where: { id: categoryId },
-    relations: ['parent'],
-  });
+  private async checkDescendant(
+    categoryId: number,
+    newParentId: number,
+  ): Promise<boolean> {
+    // If we're trying to move to the same category, it's circular
+    if (categoryId === newParentId) {
+      return true;
+    }
 
-  if (!category) return false;
-  // Check if the new parent is the category itself or its descendant
-  if (newParentId === categoryId || this.checkDescendant(category.id, newParentId)) {
-    return true;
-  }
-  // Recursively check the parent hierarchy if the category has a parent
-  if (category.parent) {
-    return await this.checkDescendant(categoryId, category.parent.id);
+    let currentCategory = await this.categoryRepository.findOne({
+      where: { id: newParentId },
+      relations: ['parent'],
+    });
+
+    // Traverse up the tree from the new parent
+    while (currentCategory) {
+      // If we find the original category in the parent chain, it's circular
+      if (currentCategory.id === categoryId) {
+        return true;
+      }
+      // Move to the parent of the current category
+      currentCategory = currentCategory.parent;
+    }
+
+    // If we've gone all the way up without finding the original category, it's not circular
+    return false;
   }
 
-  return false;
+  private async isDescendant(
+    categoryId: number,
+    oldParentId: number,
+    newParentId: number,
+  ): Promise<boolean> {
+    const childCategory = await this.categoryRepository.findOne({
+      where: { id: categoryId },
+      relations: ['parent'],
+    });
+
+    if (!childCategory) return false;
+
+    // Check if the new parent is the category itself or its descendant (excluding the old parent)
+    if (
+      newParentId === categoryId ||
+      (childCategory.parent &&
+        childCategory.parent.id !== oldParentId &&
+        this.isDescendant(newParentId, categoryId, oldParentId))
+    ) {
+      return true;
+    }
+
+    if (childCategory.parent) {
+      return await this.isDescendant(
+        categoryId,
+        oldParentId,
+        childCategory.parent.id,
+      );
+    }
+
+    return false;
   }
 }
