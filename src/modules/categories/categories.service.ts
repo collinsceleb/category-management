@@ -125,16 +125,13 @@ export class CategoriesService {
       if (!category) {
         throw new NotFoundException('Category not found');
       }
-
       // Find the new parent category
       const newParent = await this.categoryRepository.findOne({
         where: { id: newParentId },
       });
-
       if (!newParent) {
         throw new NotFoundException('New parent category not found');
       }
-
       // Check if the move would create a circular dependency
       const wouldCreateCircular = await this.checkDescendant(
         categoryId,
@@ -146,10 +143,8 @@ export class CategoriesService {
           'Cannot move a category under itself or its descendants',
         );
       }
-
       // Update the parent of the category
       category.parent = newParent;
-
       // Save the updated category
       const savedCategory = await this.categoryRepository.save(category);
 
@@ -178,11 +173,10 @@ export class CategoriesService {
     categoryId: number,
     newParentId: number,
   ): Promise<boolean> {
-    // If we're trying to move to the same category, it's circular
+    // Moving to the same category becomes circular
     if (categoryId === newParentId) {
       return true;
     }
-
     let currentCategory = await this.categoryRepository.findOne({
       where: { id: newParentId },
       relations: ['parent'],
@@ -190,48 +184,13 @@ export class CategoriesService {
 
     // Traverse up the tree from the new parent
     while (currentCategory) {
-      // If we find the original category in the parent chain, it's circular
+      // Finding the original category in the parent chain becomes circular
       if (currentCategory.id === categoryId) {
         return true;
       }
       // Move to the parent of the current category
       currentCategory = currentCategory.parent;
     }
-
-    // If we've gone all the way up without finding the original category, it's not circular
-    return false;
-  }
-
-  private async isDescendant(
-    categoryId: number,
-    oldParentId: number,
-    newParentId: number,
-  ): Promise<boolean> {
-    const childCategory = await this.categoryRepository.findOne({
-      where: { id: categoryId },
-      relations: ['parent'],
-    });
-
-    if (!childCategory) return false;
-
-    // Check if the new parent is the category itself or its descendant (excluding the old parent)
-    if (
-      newParentId === categoryId ||
-      (childCategory.parent &&
-        childCategory.parent.id !== oldParentId &&
-        this.isDescendant(newParentId, categoryId, oldParentId))
-    ) {
-      return true;
-    }
-
-    if (childCategory.parent) {
-      return await this.isDescendant(
-        categoryId,
-        oldParentId,
-        childCategory.parent.id,
-      );
-    }
-
     return false;
   }
 }
